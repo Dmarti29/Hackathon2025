@@ -10,6 +10,11 @@ from urllib.parse import urlparse
 import subprocess
 import threading
 import sys
+import threading
+import cv2
+import urllib.request
+import traceback
+import time
 
 # ============================================================================
 # CONFIGURATION
@@ -68,6 +73,7 @@ ENTERTAINMENT_KEYWORDS = [
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes to allow Chrome extension to make requests
 
+from brainrot_eyedetection import EyeGazeTracker, BrainRotWarnings
 # ============================================================================
 # DATABASE CONNECTION
 # ============================================================================
@@ -723,6 +729,279 @@ def toggle_user_state(user_id):
             "user_id": user_id
         }), 500
 
+tracking_threads = {}  # Dict to store tracking threads by user_id
+trackers = {}  # Dict to store trackers by user_id
+is_tracking = {}  # Dict to track active status by user_id
+session_stats = {}  # Dict to store stats by user_id
+error_messages = {}  # Dict to store error messages by user_id
+
+# Assume supabase client is initialized elsewhere
+# import supabase
+# supabase = initialize_supabase()
+
+def end_session(user_id, session_id):
+    """End a user session in the database"""
+    # Placeholder for your existing end_session functionality
+    # This function should mark the session as ended in your database
+    # For example:
+    # supabase.table('user_state').update({
+    #     'end_time': datetime.now().isoformat()
+    # }).eq('id', session_id).execute()
+    print(f"Ending session {session_id} for user {user_id}")
+
+def tracking_worker(user_id, duration=None, backend_url=None):
+    """
+    Background worker function that runs the eye tracking with improved error handling.
+    
+    Args:
+        user_id: User identifier
+        duration: Optional tracking duration in seconds
+        backend_url: URL to send brain rot triggers to
+    """
+    global is_tracking, trackers, session_stats, error_messages
+    
+    try:
+        # Initialize tracker
+        trackers[user_id] = EyeGazeTracker()
+        # Reset brain_rot to fix time tracking issues
+        trackers[user_id].brain_rot = BrainRotWarnings()
+        
+        cap = None
+        for attempt in range(3):
+            print(f"Attempting to open webcam for user {user_id} (attempt {attempt+1}/3)")
+            cap = cv2.VideoCapture(0)
+            if cap.isOpened():
+                print(f"Webcam opened successfully for user {user_id}")
+                break
+            time.sleep(1)
+        
+        if not cap or not cap.isOpened():
+            print(f"Error: Could not open webcam after multiple attempts for user {user_id}")
+            is_tracking[user_id] = False
+            error_messages[user_id] = "Could not access webcam after multiple attempts"
+            session_stats[user_id] = {"error": error_messages[user_id]}
+            return
+        
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+        
+        start_time = time.time()
+        # Store start time for accurate duration tracking
+        trackers[user_id].start_time = start_time
+        
+        last_trigger_time = start_time
+        trigger_threshold = 30  # Seconds between brain rot triggers
+        
+        # Auto-calibration
+        print(f"Starting auto-calibration for user {user_id}...")
+        trackers[user_id].start_calibration()
+        calibration_samples = 0
+        
+        consecutive_failures = 0
+        max_failures = 10 
+        
+        # Main tracking loop
+        while is_tracking.get(user_id, False):
+            ret, frame = cap.read()
+            
+            if not ret:
+                consecutive_failures += 1
+                print(f"Failed to grab frame for user {user_id} ({consecutive_failures}/{max_failures})")
+                
+                if consecutive_failures >= max_failures:
+                    print(f"Too many consecutive frame failures for user {user_id}, stopping tracking")
+                    error_messages[user_id] = "Too many consecutive frame failures"
+                    break
+                
+                # Wait a bit and try again
+                time.sleep(0.5)
+                continue
+            
+            # Reset failure counter on successful frame
+            consecutive_failures = 0
+            
+            try:
+                processed_frame = trackers[user_id].process_frame(frame)
+                
+                if trackers[user_id].calibration_active:
+                    calibration_samples += 1
+                    if calibration_samples >= 30:
+                        print(f"Calibration completed for user {user_id}")
+                
+                # Check if user is not looking at screen
+                current_time = time.time()
+                brain_rot = trackers[user_id].brain_rot
+                
+                # If not looking at screen for a while and it's been enough time since last trigger
+                if (not trackers[user_id].looking_at_screen and 
+                    current_time - last_trigger_time > trigger_threshold and
+                    brain_rot.times_not_looking_at_screen > 3):
+                    
+                    # Send brain rot trigger to backend
+                    if backend_url:
+                        try:
+                            import requests
+                            trigger_url = f"{backend_url}/api/brainrot/trigger"
+                            payload = {
+                                "user_id": user_id,
+                                "timestamp": datetime.now().isoformat(),
+                                "look_away_count": brain_rot.times_not_looking_at_screen,
+                                "notes": f"User looked away {brain_rot.times_not_looking_at_screen} times"
+                            }
+                            
+                            print(f"Sending brain rot trigger for user {user_id}: {payload}")
+                            response = requests.post(trigger_url, json=payload)
+                            print(f"Trigger response: {response.status_code} - {response.text}")
+                            
+                            # Reset timer for next trigger
+                            last_trigger_time = current_time
+                            
+                        except Exception as e:
+                            print(f"Error sending brain rot trigger: {e}")
+                
+            except Exception as e:
+                print(f"Error processing frame for user {user_id}: {e}")
+                traceback.print_exc()
+                continue
+            
+            if duration and current_time - start_time > duration:
+                print(f"Tracking duration of {duration} seconds completed for user {user_id}")
+                break
+            
+            # Small sleep to reduce CPU usage
+            time.sleep(0.01)
+        
+        # Finalize stats before stopping
+        if user_id in trackers and hasattr(trackers[user_id], 'brain_rot'):
+            brain_rot = trackers[user_id].brain_rot
+            
+            if not brain_rot.is_focused and brain_rot.last_unfocus_time is not None:
+                final_unfocused_duration = time.time() - brain_rot.last_unfocus_time
+                brain_rot.not_focused_times += final_unfocused_duration
+            
+            # Validate the unfocused time value
+            session_duration = time.time() - start_time
+            unfocused_time = max(0, min(brain_rot.not_focused_times, session_duration))
+            
+            minutes = int(unfocused_time // 60)
+            seconds = unfocused_time % 60
+            
+            session_stats[user_id] = {
+                "times_looked_away": brain_rot.times_not_looking_at_screen,
+                "total_unfocused_seconds": unfocused_time,
+                "total_unfocused_formatted": f"{minutes} min {seconds:.2f} sec",
+                "session_duration": session_duration
+            }
+        
+        # Clean up
+        if cap:
+            cap.release()
+        print(f"Tracking stopped for user {user_id}, stats collected")
+        
+    except Exception as e:
+        print(f"Unexpected error in tracking thread for user {user_id}: {e}")
+        traceback.print_exc()
+        error_messages[user_id] = f"Tracking error: {str(e)}"
+        session_stats[user_id] = {"error": error_messages[user_id]}
+    
+    finally:
+        # Make sure tracking is marked as inactive
+        is_tracking[user_id] = False
+        if 'cap' in locals() and cap:
+            cap.release()
+        cv2.destroyAllWindows()
+
+@app.route('/api/brainrot/stats', methods=['GET'])
+def get_stats():
+    """Get current eye tracking statistics for a user."""
+    try:
+        user_id = request.args.get('user_id')
+        
+        if not user_id:
+            return jsonify({
+                "error": "Missing required parameter: user_id"
+            }), 400
+        
+        # If there was an error for this user, report it
+        if user_id in error_messages and error_messages[user_id]:
+            return jsonify({
+                "status": "error",
+                "message": error_messages[user_id]
+            })
+        
+        if user_id in is_tracking and is_tracking[user_id] and user_id in trackers:
+            # Calculate current stats without stopping tracking
+            try:
+                tracker = trackers[user_id]
+                brain_rot = tracker.brain_rot
+                
+                current_time = time.time()
+                current_unfocused = brain_rot.not_focused_times
+                
+                # If currently unfocused, add the current unfocused time
+                if not brain_rot.is_focused and brain_rot.last_unfocus_time is not None:
+                    current_unfocused += current_time - brain_rot.last_unfocus_time
+                
+                # VALIDATION: Ensure the unfocused time is reasonable
+                # Cap it at the session duration if it exceeds it
+                session_start_time = getattr(tracker, 'start_time', current_time - 3600)  # Default to 1 hour if unknown
+                session_duration = current_time - session_start_time
+                
+                if current_unfocused > session_duration:
+                    print(f"Warning: Unfocused time ({current_unfocused}s) exceeds session duration ({session_duration}s) for user {user_id}")
+                    current_unfocused = min(current_unfocused, session_duration)
+                
+                # Also ensure it's not negative
+                current_unfocused = max(current_unfocused, 0)
+                
+                total_seconds = current_unfocused
+                minutes = int(total_seconds // 60)
+                seconds = total_seconds % 60
+                
+                current_stats = {
+                    "status": "in_progress",
+                    "times_looked_away": brain_rot.times_not_looking_at_screen,
+                    "total_unfocused_seconds": total_seconds,
+                    "total_unfocused_formatted": f"{minutes} min {seconds:.2f} sec",
+                    "currently_focused": brain_rot.is_focused,
+                    "session_duration": session_duration
+                }
+                return jsonify(current_stats)
+            except Exception as e:
+                print(f"Error getting real-time stats for user {user_id}: {e}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"Error getting stats: {str(e)}"
+                })
+        elif user_id in session_stats and session_stats[user_id]:
+            # Return the final stats from the completed session
+            return jsonify({**session_stats[user_id], "status": "completed"})
+        else:
+            return jsonify({
+                "status": "not_started",
+                "message": f"No tracking session data available for user {user_id}"
+            })
+            
+    except Exception as e:
+        print(f"❌ Error getting eye detection stats: {e}")
+        return jsonify({
+            "error": f"Failed to get eye detection stats: {str(e)}"
+        }), 500
+        
+    except Exception as e:
+        print(f"Unexpected error in tracking thread for user {user_id}: {e}")
+        traceback.print_exc()
+        error_messages[user_id] = f"Tracking error: {str(e)}"
+        session_stats[user_id] = {"error": error_messages[user_id]}
+    
+    finally:
+        # Make sure tracking is marked as inactive
+        is_tracking[user_id] = False
+        if 'cap' in locals() and cap:
+            cap.release()
+        cv2.destroyAllWindows()
+
+# Original route from your app
 @app.route('/api/brainrot/start', methods=['POST'])
 def start_eye_detection():
     """
@@ -751,29 +1030,41 @@ def start_eye_detection():
         protocol = 'https' if request.is_secure else 'http'
         backend_url = f"{protocol}://{host}"
         
-        # Get the path to the eye detection script
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        eye_detection_script = os.path.join(script_dir, 'brainrot_eyedetection.py')
+        # Check if tracking is already active for this user
+        if is_tracking.get(user_id, False):
+            return jsonify({
+                "status": "error",
+                "message": f"Eye tracking already in progress for user {user_id}"
+            }), 400
         
-        # Start the eye detection script as a subprocess
-        def run_eye_detection():
+        # Check if the model exists and download if needed
+        if not os.path.exists('face_landmarker.task'):
             try:
-                cmd = [sys.executable, eye_detection_script, '--backend_url', backend_url, '--user_id', user_id]
-                print(f"🔍 Starting eye detection with command: {' '.join(cmd)}")
-                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = process.communicate()
-                if process.returncode != 0:
-                    print(f"❌ Eye detection process exited with code {process.returncode}")
-                    print(f"Error: {stderr.decode('utf-8')}")
-                else:
-                    print(f"✅ Eye detection process completed successfully")
+                print("Downloading face landmarker model...")
+                urllib.request.urlretrieve(
+                    'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+                    'face_landmarker.task')
+                print("Model downloaded successfully!")
             except Exception as e:
-                print(f"❌ Error running eye detection: {e}")
+                error_msg = f"Failed to download model: {str(e)}"
+                print(error_msg)
+                return jsonify({"status": "error", "message": error_msg}), 500
         
-        # Start the eye detection in a separate thread
-        thread = threading.Thread(target=run_eye_detection)
-        thread.daemon = True  # Make thread exit when main thread exits
-        thread.start()
+        # Get optional duration parameter
+        duration = data.get('duration')  # in seconds, optional
+        
+        # Reset stats and error for this user
+        session_stats[user_id] = {}
+        error_messages[user_id] = ""
+        is_tracking[user_id] = True
+        
+        # Start tracking in a background thread
+        tracking_threads[user_id] = threading.Thread(
+            target=tracking_worker, 
+            args=(user_id, duration, backend_url)
+        )
+        tracking_threads[user_id].daemon = True
+        tracking_threads[user_id].start()
         
         return jsonify({
             "status": "success",
@@ -790,6 +1081,7 @@ def start_eye_detection():
 
 @app.route('/api/brainrot/trigger', methods=['POST'])
 def trigger_brainrot():
+    
     """
     Endpoint to receive brain rot triggers from eye detection
     
@@ -814,21 +1106,24 @@ def trigger_brainrot():
         # Extract data
         user_id = data['user_id']
         timestamp = data.get('timestamp', datetime.now().isoformat())
-        look_away_count = data.get('look_away_count', 5)
+        look_away_count = data.get('look_away_count', 1)
         notes = data.get('notes', f"User looked away {look_away_count} times")
         
         # Make sure user exists
-        supabase.table('users').upsert({
-            'id': user_id,
-            'updated_at': timestamp
-        }).execute()
+        # supabase.table('users').upsert({
+        #     'id': user_id,
+        #     'updated_at': timestamp
+        # }).execute()
         
         # Check if there's an active session
-        active_sessions = supabase.table('user_state')\
-            .select('*')\
-            .eq('user_id', user_id)\
-            .is_('end_time', 'null')\
-            .execute()
+        # active_sessions = supabase.table('user_state')\
+        #     .select('*')\
+        #     .eq('user_id', user_id)\
+        #     .is_('end_time', 'null')\
+        #     .execute()
+        
+        # Placeholder code until database is integrated
+        active_sessions = {"data": []}
             
         if hasattr(active_sessions, 'data') and len(active_sessions.data) > 0:
             # If there's an active session and it's locked_in (studying), toggle it to brain rot
@@ -838,12 +1133,15 @@ def trigger_brainrot():
                 end_session(user_id, active_session['id'])
                 
                 # Start a new brain rot session
-                result = supabase.table('user_state').insert({
-                    'user_id': user_id,
-                    'locked_in': False,  # brain rotting
-                    'start_time': timestamp,
-                    'notes': f"Brain rot detected: {notes}"
-                }).execute()
+                # result = supabase.table('user_state').insert({
+                #     'user_id': user_id,
+                #     'locked_in': False,  # brain rotting
+                #     'start_time': timestamp,
+                #     'notes': f"Brain rot detected: {notes}"
+                # }).execute()
+                
+                # Placeholder until database is integrated
+                result = {"data": [{"id": "new-session-id", "user_id": user_id, "locked_in": False}]}
                 
                 return jsonify({
                     "status": "success",
@@ -861,12 +1159,15 @@ def trigger_brainrot():
                 })
         else:
             # No active session, start a new brain rot session
-            result = supabase.table('user_state').insert({
-                'user_id': user_id,
-                'locked_in': False,  # brain rotting
-                'start_time': timestamp,
-                'notes': f"Brain rot detected: {notes}"
-            }).execute()
+            # result = supabase.table('user_state').insert({
+            #     'user_id': user_id,
+            #     'locked_in': False,  # brain rotting
+            #     'start_time': timestamp,
+            #     'notes': f"Brain rot detected: {notes}"
+            # }).execute()
+            
+            # Placeholder until database is integrated
+            result = {"data": [{"id": "new-session-id", "user_id": user_id, "locked_in": False}]}
             
             return jsonify({
                 "status": "success",
@@ -880,6 +1181,112 @@ def trigger_brainrot():
         return jsonify({
             "error": f"Failed to trigger brain rot: {str(e)}",
             "user_id": data.get('user_id', 'unknown')
+        }), 500
+
+# New routes added for the eye tracking API
+
+@app.route('/api/brainrot/stop', methods=['POST'])
+def stop_tracking():
+    """Stop eye tracking session for a user."""
+    global is_tracking, tracking_threads, session_stats
+    
+    try:
+        # Get data from request
+        data = request.json
+        
+        # Validate required fields
+        if not data or 'user_id' not in data:
+            return jsonify({
+                "error": "Missing required field: user_id"
+            }), 400
+            
+        user_id = data['user_id']
+        
+        # Debug: Print what we know about the tracking state
+        print(f"Stop request for user '{user_id}'")
+        print(f"Known tracking users: {list(is_tracking.keys())}")
+        print(f"Tracking state for this user: {is_tracking.get(user_id, 'Not found')}")
+        print(f"All tracking states: {is_tracking}")
+        
+        if not is_tracking.get(user_id, False):
+            return jsonify({
+                "status": "error", 
+                "message": f"No tracking in progress for user {user_id}"
+            }), 400
+        
+        is_tracking[user_id] = False
+        
+        # Wait for the thread to clean up (max 3 seconds)
+        if user_id in tracking_threads and tracking_threads[user_id].is_alive():
+            wait_time = 0
+            while tracking_threads[user_id].is_alive() and wait_time < 3:
+                time.sleep(0.1)
+                wait_time += 0.1
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Eye tracking stopped for user {user_id}",
+            "stats": session_stats.get(user_id, {})
+        })
+        
+    except Exception as e:
+        print(f"❌ Error stopping eye detection: {e}")
+        traceback.print_exc()
+        return jsonify({
+            "error": f"Failed to stop eye detection: {str(e)}"
+        }), 500
+
+@app.route('/api/brainrot/status', methods=['GET'])
+def get_status():
+    """Get current tracking status for a user."""
+    try:
+        user_id = request.args.get('user_id')
+        
+        if not user_id:
+            return jsonify({
+                "error": "Missing required parameter: user_id"
+            }), 400
+        
+        status = "active" if is_tracking.get(user_id, False) else "inactive"
+        response = {"status": status}
+        
+        if user_id in error_messages and error_messages[user_id]:
+            response["error"] = error_messages[user_id]
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        print(f"❌ Error getting eye detection status: {e}")
+        return jsonify({
+            "error": f"Failed to get eye detection status: {str(e)}"
+        }), 500
+
+@app.route('/api/brainrot/reset_error', methods=['POST'])
+def reset_error():
+    """Reset any error message for a user."""
+    try:
+        # Get data from request
+        data = request.json
+        
+        # Validate required fields
+        if not data or 'user_id' not in data:
+            return jsonify({
+                "error": "Missing required field: user_id"
+            }), 400
+            
+        user_id = data['user_id']
+        
+        error_messages[user_id] = ""
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Error state reset for user {user_id}"
+        })
+        
+    except Exception as e:
+        print(f"❌ Error resetting error state: {e}")
+        return jsonify({
+            "error": f"Failed to reset error state: {str(e)}"
         }), 500
 
 # ============================================================================

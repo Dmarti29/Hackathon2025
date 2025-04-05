@@ -14,7 +14,7 @@ class BrainRotWarnings:
     """
     Tracks metrics for time spent not looking at screen.
     """
-    def __init__(self, backend_url="http://localhost:5001", user_id="test_user", trigger_threshold=5, look_away_duration=30):
+    def __init__(self, backend_url="http://localhost:5001", user_id="test_user", trigger_threshold=1, look_away_duration=5):
         """
         Initialize brain rot warning tracker.
         
@@ -94,13 +94,14 @@ class BrainRotWarnings:
             # Check if the request was successful
             if response.status_code == 200:
                 print(f"✅ Brain rot alert triggered: {response.json()}")
-                self.triggered = True
                 self.times_not_looking_at_screen = 0  # Reset counter
             else:
                 print(f"❌ Failed to trigger brain rot alert: {response.status_code} - {response.text}")
                 
         except Exception as e:
             print(f"❌ Error triggering brain rot alert: {e}")
+        
+        
             
     def reset_trigger(self):
         """
