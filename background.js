@@ -35,6 +35,11 @@ const unproductiveSites = [
     "www.facebook.com",
 ];
 
+// DEV: Local Flask server
+const API_BASE = "http://127.0.0.1:5001";
+const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InBpZWF2dWducG1pbHd3ZXlzeWNiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM4NDcxMjcsImV4cCI6MjA1OTQyMzEyN30.n7cbXhyZdmyFS2r3wSJNeTvM6xCGrj79D4zGDkDoNws";
+const userId = "user123";
+
 // Initialize the timer variables
 let timer = null;
 // CHANGE: Define default times and add testing mode variables
@@ -144,6 +149,43 @@ chrome.tabs.onRemoved.addListener((tabId) => {
     chrome.storage.local.set({ tabDurations: tabDurations });
 });
 
+let lastApiResponse = null;
+
+async function submitUrlToAPI(userId, url) {
+    try {
+      const response = await fetch(`${API_BASE}/api/url/submit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ user_id: userId, url: url })
+      });
+  
+      const data = await response.json();
+      console.log("✅ API URL Submit Response:", data);
+      lastApiResponse = data;
+      return data;
+    } catch (err) {
+      console.error("❌ Failed to submit URL:", err);
+      lastApiResponse = { error: err.message };
+      return null;
+    }
+  }
+  
+
+// Add message listener for getting API response
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === "getApiResponse") {
+        sendResponse({ apiResponse: lastApiResponse });
+    }
+    return true;
+});
+
+async function getUserStats(userId) {
+    const res = await fetch(`http://localhost:5001/api/user/${userId}/stats`);
+    return res.json();
+  }
+
 // Add a function to get tab duration data
 function getTabDurations() {
     return tabDurations;
@@ -157,6 +199,10 @@ function checkSiteType(url, tabId) {
 
     try {
         const hostname = new URL(url).hostname;
+
+        console.log("Submitting URL to API:", url, "for userId:", userId);
+
+        submitUrlToAPI(userId, url); 
 
         let isProductive = false;
         let isUnproductive = false;

@@ -42,6 +42,19 @@ document.addEventListener("DOMContentLoaded", function () {
 
             urlDiv.innerHTML = `<strong>Current URL:</strong><br>${displayUrl}`;
             statusDiv.appendChild(urlDiv);
+
+            // Get and display API response
+            chrome.runtime.sendMessage({ action: "getApiResponse" }, function(response) {
+                const apiResponseDiv = document.getElementById("apiResponse");
+                const apiResponseData = document.getElementById("apiResponseData");
+                
+                if (response && response.apiResponse) {
+                    apiResponseDiv.style.display = "block";
+                    apiResponseData.textContent = JSON.stringify(response.apiResponse, null, 2);
+                } else {
+                    apiResponseDiv.style.display = "none";
+                }
+            });
         });
     });
 
@@ -171,4 +184,3 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       });
     }
-  

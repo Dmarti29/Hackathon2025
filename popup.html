@@ -119,9 +119,12 @@
         </style>
     </head>
     <body>
-        <h1>Productivity Battle</h1>
-
         <div class="status" id="currentStatus">Checking current site...</div>
+
+        <div class="api-response" id="apiResponse" style="margin-top: 15px; padding: 10px; background-color: #f8f9fa; border-radius: 4px; display: none;">
+            <h3>API Response</h3>
+            <div id="apiResponseData" style="font-size: 12px; word-break: break-all;"></div>
+        </div>
 
         <div class="pomodoro-info">
             <h2>Self-Adjusting Pomodoro Technique</h2>
@@ -175,13 +178,19 @@
   </div>
 
     <!-- Temporary test button for opening URLs - Delete when no longer needed -->
+
     <div class="test-button-container">
       <h3>Test URL Opening</h3>
       <p>This button will open 5 test URLs in new tabs.</p>
       <button id="openTestUrls" class="test-button">Open Test URLs</button>
-    </div>
+    </div> 
     
-
+    <!-- Brain-Bot Control -->
+    <div class="session-controls" style="margin-top: 20px;">
+        <h3>Brain-Bot</h3>
+        <button id="startStopSessionBtn" style="width: 100%; background-color: #34a853;">Start Brain-Bot</button>
+      </div>
+      
         <script src="popup.js"></script>
     </body>
 </html>
