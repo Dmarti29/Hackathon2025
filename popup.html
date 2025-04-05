@@ -1,124 +1,177 @@
 <!-- // popup.html -->
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Productivity Battle</title>
-  <style>
-    body {
-      width: 300px;
-      padding: 15px;
-      font-family: Arial, sans-serif;
-    }
-    
-    h1 {
-      font-size: 18px;
-      margin-bottom: 15px;
-    }
-    
-    .status {
-      margin-bottom: 15px;
-      padding: 10px;
-      border-radius: 5px;
-      background-color: #f0f0f0;
-    }
-    
-    .pomodoro-info {
-      margin-top: 20px;
-      padding: 15px;
-      border: 1px solid #ddd;
-      border-radius: 5px;
-      background-color: #fff;
-    }
-    
-    .pomodoro-info h2 {
-      font-size: 16px;
-      margin-bottom: 10px;
-      color: #333;
-    }
-    
-    .pomodoro-steps {
-      list-style-type: none;
-      padding: 0;
-      margin: 0;
-    }
-    
-    .pomodoro-steps li {
-      margin-bottom: 8px;
-      padding-left: 20px;
-      position: relative;
-    }
-    
-    .pomodoro-steps li:before {
-      content: "•";
-      position: absolute;
-      left: 0;
-      color: #4285f4;
-    }
-    
-    .settings {
-      margin-top: 20px;
-    }
-    
-    label {
-      display: block;
-      margin-bottom: 10px;
-    }
-    
-    button {
-      background-color: #4285f4;
-      color: white;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 4px;
-      cursor: pointer;
-    }
-    
-    button:hover {
-      background-color: #3367d6;
-    }
-  </style>
-</head>
-<body>
-  <h1>Productivity Battle</h1>
-  
-  <div class="status" id="currentStatus">
-    Checking current site...
-  </div>
-  
-  <div class="pomodoro-info">
-    <h2>Self-Adjusting Pomodoro Technique</h2>
-  </div>
+    <head>
+        <title>Productivity Battle</title>
+        <style>
+            body {
+                width: 300px;
+                padding: 15px;
+                font-family: Arial, sans-serif;
+            }
 
-  <div class="settings">
-    <h2>Settings</h2>
-    <label>
-      Show suggestions every:
-      <select id="suggestionFrequency">
-        <option value="2">2 minutes</option>
-        <option value="5" selected>5 minutes</option>
-        <option value="10">10 minutes</option>
-        <option value="15">15 minutes</option>
-        <option value="30">30 minutes</option>
-      </select>
-    </label>
-    
-    <div class="testing-section">
-      <h3>Developer Testing</h3>
-      <label class="toggle-label">
-        <input type="checkbox" id="testingMode"> Enable testing mode
-      </label>
-      <div id="testingInfo" style="display:none; margin-top: 10px; padding: 10px; background-color: #fffde7; border-left: 4px solid #ffd600; font-size: 12px;">
-        In testing mode:
-        <ul>
-          <li>Initial suggestion appears after 5 seconds</li>
-          <li>Suggestions auto-dismiss after 5 seconds</li>
-          <li>Next suggestion appears in 5-10 seconds</li>
-        </ul>
-      </div>
-    </div>
-    
-    <button id="saveSettings">Save Settings</button>
+            h1 {
+                font-size: 18px;
+                margin-bottom: 15px;
+            }
 
+            .status {
+                margin-bottom: 15px;
+                padding: 10px;
+                border-radius: 5px;
+                background-color: #f0f0f0;
+            }
+
+            .pomodoro-info {
+                margin-top: 20px;
+                padding: 15px;
+                border: 1px solid #ddd;
+                border-radius: 5px;
+                background-color: #fff;
+            }
+
+            .pomodoro-info h2 {
+                font-size: 16px;
+                margin-bottom: 10px;
+                color: #333;
+            }
+
+            .pomodoro-steps {
+                list-style-type: none;
+                padding: 0;
+                margin: 0;
+            }
+
+            .pomodoro-steps li {
+                margin-bottom: 8px;
+                padding-left: 20px;
+                position: relative;
+            }
+
+            .pomodoro-steps li:before {
+                content: "•";
+                position: absolute;
+                left: 0;
+                color: #4285f4;
+            }
+
+            .settings {
+                margin-top: 20px;
+            }
+
+            label {
+                display: block;
+                margin-bottom: 10px;
+            }
+
+            button {
+                background-color: #4285f4;
+                color: white;
+                border: none;
+                padding: 8px 12px;
+                border-radius: 4px;
+                cursor: pointer;
+            }
+
+            button:hover {
+                background-color: #3367d6;
+            }
+
+            .site-list {
+                margin-top: 15px;
+                max-height: 150px;
+                overflow-y: auto;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+                padding: 5px;
+            }
+
+            .site-item {
+                padding: 5px;
+                display: flex;
+                justify-content: space-between;
+            }
+
+            .site-item:not(:last-child) {
+                border-bottom: 1px solid #eee;
+            }
+
+            .anchor-section {
+                margin-top: 15px;
+                padding: 10px;
+                background-color: #f8f9fa;
+                border-radius: 4px;
+            }
+
+            .anchor-section h3 {
+                margin: 0 0 10px 0;
+                font-size: 14px;
+            }
+
+            #injectAnchors {
+                width: 100%;
+                background-color: #34a853;
+            }
+
+            #injectAnchors:hover {
+                background-color: #2d9249;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>Productivity Battle</h1>
+
+        <div class="status" id="currentStatus">Checking current site...</div>
+
+        <div class="pomodoro-info">
+            <h2>Self-Adjusting Pomodoro Technique</h2>
+        </div>
+
+        <div class="settings">
+            <h2>Settings</h2>
+            <label>
+                Show suggestions every:
+                <select id="suggestionFrequency">
+                    <option value="2">2 minutes</option>
+                    <option value="5" selected>5 minutes</option>
+                    <option value="10">10 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                </select>
+            </label>
+
+            <div class="anchor-section">
+                <h3>Quick Links</h3>
+                <button id="injectAnchors">Add Quick Links</button>
+            </div>
+
+            <div class="testing-section">
+                <h3>Developer Testing</h3>
+                <label class="toggle-label">
+                    <input type="checkbox" id="testingMode" />
+                    Enable testing mode
+                </label>
+                <div
+                    id="testingInfo"
+                    style="
+                        display: none;
+                        margin-top: 10px;
+                        padding: 10px;
+                        background-color: #fffde7;
+                        border-left: 4px solid #ffd600;
+                        font-size: 12px;
+                    ">
+                    In testing mode:
+                    <ul>
+                        <li>Initial suggestion appears after 5 seconds</li>
+                        <li>Suggestions auto-dismiss after 5 seconds</li>
+                        <li>Next suggestion appears in 5-10 seconds</li>
+                    </ul>
+                </div>
+            </div>
+
+            <button id="saveSettings">Save Settings</button>
+      
   </div>
 
     <!-- Temporary test button for opening URLs - Delete when no longer needed -->
@@ -128,7 +181,7 @@
       <button id="openTestUrls" class="test-button">Open Test URLs</button>
     </div>
     
-  
-  <script src="popup.js"></script>
-</body>
+
+        <script src="popup.js"></script>
+    </body>
 </html>
