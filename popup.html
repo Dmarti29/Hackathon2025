@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Eye Tracking Monitor</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      width: 300px;
+      padding: 10px;
+    }
+    button {
+      background-color: #4285f4;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      margin: 5px 0;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    button:hover {
+      background-color: #3367d6;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    .status {
+      margin: 10px 0;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    .active {
+      background-color: #d6f5d6;
+    }
+    .inactive {
+      background-color: #f5f5f5;
+    }
+    .stats {
+      margin-top: 15px;
+      border-top: 1px solid #eee;
+      padding-top: 10px;
+    }
+    .error {
+      color: red;
+    }
+  </style>
+</head>
+<body>
+  <h2>Eye Tracking Monitor</h2>
+  
+  <div class="status inactive" id="statusBox">
+    Status: <span id="status">Inactive</span>
+  </div>
+  
+  <button id="startTracking">Start Tracking</button>
+  <button id="stopTracking" disabled>Stop Tracking</button>
+  <button id="getStats">Get Stats</button>
+  
+  <div class="stats" id="statsContainer" style="display: none;">
+    <h3>Tracking Statistics</h3>
+    <div id="statsContent"></div>
+  </div>
+  
+  <div id="error" class="error" style="display: none;"></div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
