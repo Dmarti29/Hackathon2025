@@ -72,7 +72,7 @@ ENTERTAINMENT_KEYWORDS = [
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes to allow Chrome extension to make requests
-
+times_looked_away:int = 0
 from brainrot_eyedetection import EyeGazeTracker, BrainRotWarnings
 # ============================================================================
 # DATABASE CONNECTION
@@ -1174,7 +1174,7 @@ def trigger_brainrot():
                 "message": "Brain rot detected, started brain rot session",
                 "session": result.data[0] if hasattr(result, 'data') and len(result.data) > 0 else None,
                 "action": "started"
-            })
+                })
             
     except Exception as e:
         print(f"❌ Error triggering brain rot: {e}")
