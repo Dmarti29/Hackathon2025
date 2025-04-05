@@ -90,3 +90,41 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 });
+
+    
+    // Add event listener for the test URL opening button
+    const openTestUrlsButton = document.getElementById('openTestUrls');
+    if (openTestUrlsButton) {
+      openTestUrlsButton.addEventListener('click', function() {
+        // Disable button to prevent multiple clicks
+        this.disabled = true;
+        this.textContent = 'Opening URLs...';
+        
+        // Send message to background script to open test URLs
+        chrome.runtime.sendMessage({ 
+          action: 'openUrls' 
+        }, function(response) {
+          // Re-enable button after response is received
+          openTestUrlsButton.disabled = false;
+          
+          if (response && response.success) {
+            openTestUrlsButton.textContent = 'URLs Opened!';
+            console.log('Opened tabs:', response.tabs);
+            
+            // Reset button text after 2 seconds
+            setTimeout(function() {
+              openTestUrlsButton.textContent = 'Open Test URLs';
+            }, 2000);
+          } else {
+            openTestUrlsButton.textContent = 'Error - Try Again';
+            console.error('Failed to open URLs:', response ? response.error : 'No response');
+            
+            // Reset button text after 2 seconds
+            setTimeout(function() {
+              openTestUrlsButton.textContent = 'Open Test URLs';
+            }, 2000);
+          }
+        });
+      });
+    }
+  

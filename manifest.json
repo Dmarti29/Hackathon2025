@@ -3,7 +3,7 @@
     "name": "Productivity Battle",
     "version": "1.0",
     "description": "An extension that constantly tries to change your productivity state",
-    "permissions": ["storage", "tabs", "activeTab", "notifications"],
+    "permissions": ["storage", "tabs", "activeTab", "notifications", "windows"],
     "background": {
       "service_worker": "background.js"
     },
