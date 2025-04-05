@@ -15,8 +15,9 @@ SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJ
 # AI Configuration - placeholder for AI integration
 USE_AI_CATEGORIZATION = True  # Set to True to use AI for URL categorization
 
-# These lists are used as fallback if AI categorization is not available
-# List of productive domains - these are considered "study mode" sites
+# THis is just in case we can't add the ai segemation
+
+
 PRODUCTIVE_DOMAINS = [
     "github.com",
     "stackoverflow.com",
@@ -30,7 +31,6 @@ PRODUCTIVE_DOMAINS = [
     "freecodecamp.org"
 ]
 
-# List of unproductive domains - these are considered "brain rot" sites
 UNPRODUCTIVE_DOMAINS = [
     "youtube.com",
     "facebook.com",
@@ -347,6 +347,245 @@ def get_user_locked_in_sessions(user_id):
             "error": "Failed to retrieve user locked-in sessions",
             "user_id": user_id,
             "sessions": []
+        }), 500
+
+@app.route('/api/user/<user_id>/state/start', methods=['POST'])
+def start_user_state(user_id):
+    """
+    Start a new state for a user (locked in or brain rotting)
+    
+    Expected JSON payload:
+    {
+        "locked_in": true,  // true for studying, false for brain rotting
+        "notes": "Optional notes about this session"
+    }
+    """
+    try:
+        # Get data from request
+        data = request.json
+        
+        # Validate required fields
+        if not data or 'locked_in' not in data:
+            return jsonify({
+                "error": "Missing required field: locked_in"
+            }), 400
+        
+        # Extract data
+        locked_in = data['locked_in']
+        notes = data.get('notes', '')
+        
+        # Current timestamp
+        timestamp = datetime.now().isoformat()
+        
+        # Make sure user exists
+        supabase.table('users').upsert({
+            'id': user_id,
+            'updated_at': timestamp
+        }).execute()
+        
+        # Check if there's an active session that needs to be ended
+        active_sessions = supabase.table('user_state')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .is_('end_time', 'null')\
+            .execute()
+            
+        if hasattr(active_sessions, 'data') and len(active_sessions.data) > 0:
+            # End the active session
+            active_session = active_sessions.data[0]
+            end_session(user_id, active_session['id'])
+        
+        # Create new state
+        result = supabase.table('user_state').insert({
+            'user_id': user_id,
+            'locked_in': locked_in,
+            'start_time': timestamp,
+            'notes': notes
+        }).execute()
+        
+        if hasattr(result, 'data') and len(result.data) > 0:
+            return jsonify({
+                "status": "success",
+                "message": f"Started {'locked-in study' if locked_in else 'brain rotting'} session",
+                "session": result.data[0]
+            })
+        else:
+            return jsonify({
+                "error": "Failed to start session",
+                "user_id": user_id
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ Error starting user state: {e}")
+        return jsonify({
+            "error": f"Failed to start session: {str(e)}",
+            "user_id": user_id
+        }), 500
+
+def end_session(user_id, session_id):
+    """
+    Helper function to end a session and calculate duration
+    """
+    # Current timestamp
+    end_time = datetime.now().isoformat()
+    
+    # Get the session to calculate duration
+    session_response = supabase.table('user_state')\
+        .select('*')\
+        .eq('id', session_id)\
+        .execute()
+        
+    if hasattr(session_response, 'data') and len(session_response.data) > 0:
+        session = session_response.data[0]
+        start_time = datetime.fromisoformat(session['start_time'].replace('Z', '+00:00'))
+        end_time_dt = datetime.now()
+        
+        # Calculate duration in seconds
+        duration = int((end_time_dt - start_time).total_seconds())
+        
+        # Update the session
+        supabase.table('user_state')\
+            .update({
+                'end_time': end_time,
+                'duration': duration
+            })\
+            .eq('id', session_id)\
+            .execute()
+            
+        return {
+            'session_id': session_id,
+            'duration': duration,
+            'end_time': end_time
+        }
+    
+    return None
+
+@app.route('/api/user/<user_id>/state/end', methods=['POST'])
+def end_user_state(user_id):
+    """
+    End the current active state for a user
+    
+    Expected JSON payload:
+    {
+        "session_id": 123  // Optional, if not provided will end the most recent active session
+    }
+    """
+    try:
+        # Get data from request
+        data = request.json or {}
+        
+        # If session_id is provided, use it
+        if 'session_id' in data:
+            session_id = data['session_id']
+            result = end_session(user_id, session_id)
+            
+            if result:
+                return jsonify({
+                    "status": "success",
+                    "message": "Session ended successfully",
+                    "session": result
+                })
+            else:
+                return jsonify({
+                    "error": "Session not found or already ended",
+                    "user_id": user_id,
+                    "session_id": session_id
+                }), 404
+        
+        # Otherwise, find the active session
+        active_sessions = supabase.table('user_state')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .is_('end_time', 'null')\
+            .execute()
+            
+        if hasattr(active_sessions, 'data') and len(active_sessions.data) > 0:
+            # End the active session
+            active_session = active_sessions.data[0]
+            result = end_session(user_id, active_session['id'])
+            
+            return jsonify({
+                "status": "success",
+                "message": "Session ended successfully",
+                "session": result
+            })
+        else:
+            return jsonify({
+                "error": "No active session found",
+                "user_id": user_id
+            }), 404
+            
+    except Exception as e:
+        print(f"❌ Error ending user state: {e}")
+        return jsonify({
+            "error": f"Failed to end session: {str(e)}",
+            "user_id": user_id
+        }), 500
+
+@app.route('/api/user/<user_id>/state/toggle', methods=['POST'])
+def toggle_user_state(user_id):
+    """
+    Toggle between locked-in and brain rotting states
+    Ends the current state (if any) and starts a new one with the opposite locked_in value
+    
+    Expected JSON payload:
+    {
+        "notes": "Optional notes about this new session"
+    }
+    """
+    try:
+        # Get data from request
+        data = request.json or {}
+        notes = data.get('notes', '')
+        
+        # Find the active session
+        active_sessions = supabase.table('user_state')\
+            .select('*')\
+            .eq('user_id', user_id)\
+            .is_('end_time', 'null')\
+            .execute()
+            
+        # Default to starting a locked-in session if no active session
+        new_locked_in = True
+        
+        if hasattr(active_sessions, 'data') and len(active_sessions.data) > 0:
+            # End the active session
+            active_session = active_sessions.data[0]
+            end_session(user_id, active_session['id'])
+            
+            # Toggle the locked_in value
+            new_locked_in = not active_session['locked_in']
+        
+        # Start a new session with the toggled state
+        # Current timestamp
+        timestamp = datetime.now().isoformat()
+        
+        # Create new state
+        result = supabase.table('user_state').insert({
+            'user_id': user_id,
+            'locked_in': new_locked_in,
+            'start_time': timestamp,
+            'notes': notes
+        }).execute()
+        
+        if hasattr(result, 'data') and len(result.data) > 0:
+            return jsonify({
+                "status": "success",
+                "message": f"Toggled to {'locked-in study' if new_locked_in else 'brain rotting'} mode",
+                "session": result.data[0],
+                "locked_in": new_locked_in
+            })
+        else:
+            return jsonify({
+                "error": "Failed to toggle session",
+                "user_id": user_id
+            }), 500
+            
+    except Exception as e:
+        print(f"❌ Error toggling user state: {e}")
+        return jsonify({
+            "error": f"Failed to toggle session: {str(e)}",
+            "user_id": user_id
         }), 500
 
 # ============================================================================
