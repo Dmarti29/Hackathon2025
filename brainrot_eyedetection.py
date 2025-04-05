@@ -6,19 +6,37 @@ from mediapipe.tasks.python import vision
 import time
 import math
 import time
+import requests
+import json
+from datetime import datetime
 
 class BrainRotWarnings:
     """
     Tracks metrics for time spent not looking at screen.
     """
-    def __init__(self):
+    def __init__(self, backend_url="http://localhost:5001", user_id="test_user", trigger_threshold=5, look_away_duration=30):
         """
         Initialize brain rot warning tracker.
+        
+        Args:
+            backend_url: URL of the Flask backend
+            user_id: ID of the current user
+            trigger_threshold: Number of look-away events before triggering brain rot alert
+            look_away_duration: Duration in seconds that counts as a single look-away event
         """
         self.not_focused_times = 0.0  # Total time spent not looking at screen
         self.times_not_looking_at_screen = 0  # Count of distinct look-away events
         self.is_focused = True  # Current focus state
         self.last_unfocus_time = None  # Timestamp when user last looked away
+        self.current_unfocus_duration = 0.0  # Duration of current unfocus period
+        
+        # Backend integration
+        self.backend_url = backend_url
+        self.user_id = user_id
+        self.trigger_threshold = trigger_threshold
+        self.look_away_duration = look_away_duration  # Duration in seconds that counts as a look-away event
+        self.triggered = False  # Flag to track if brain rot has been triggered in this session
+        self.last_event_time = 0  # Time of last look-away event
     
     def not_focused(self, focused):
         """
@@ -29,16 +47,68 @@ class BrainRotWarnings:
         current_time = time.perf_counter()
         
         if not self.is_focused and focused:
+            # User just looked back at the screen after looking away
             if self.last_unfocus_time is not None:
                 unfocused_duration = current_time - self.last_unfocus_time
                 self.not_focused_times += unfocused_duration
+                
+                # If the user was looking away for at least look_away_duration seconds,
+                # count it as a look-away event
+                if unfocused_duration >= self.look_away_duration:
+                    self.times_not_looking_at_screen += 1
+                    print(f"Look-away event {self.times_not_looking_at_screen}/{self.trigger_threshold} detected! Duration: {unfocused_duration:.1f}s")
+                    self.last_event_time = current_time
+                    
+                    # Check if we've reached the trigger threshold
+                    if self.times_not_looking_at_screen >= self.trigger_threshold and not self.triggered:
+                        self.trigger_brainrot_alert()
+                
                 self.last_unfocus_time = None
             self.is_focused = True
         
         elif self.is_focused and not focused:
-            self.times_not_looking_at_screen += 1
+            # User just looked away from the screen
             self.last_unfocus_time = current_time
             self.is_focused = False
+                
+    def trigger_brainrot_alert(self):
+        """
+        Send a brain rot alert to the backend
+        """
+        try:
+            # Prepare the payload
+            payload = {
+                "user_id": self.user_id,
+                "timestamp": datetime.now().isoformat(),
+                "look_away_count": self.times_not_looking_at_screen,
+                "notes": f"User looked away {self.times_not_looking_at_screen} times"
+            }
+            
+            # Send the request
+            response = requests.post(
+                f"{self.backend_url}/api/brainrot/trigger",
+                json=payload,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            # Check if the request was successful
+            if response.status_code == 200:
+                print(f"✅ Brain rot alert triggered: {response.json()}")
+                self.triggered = True
+                self.times_not_looking_at_screen = 0  # Reset counter
+            else:
+                print(f"❌ Failed to trigger brain rot alert: {response.status_code} - {response.text}")
+                
+        except Exception as e:
+            print(f"❌ Error triggering brain rot alert: {e}")
+            
+    def reset_trigger(self):
+        """
+        Reset the trigger flag to allow new brain rot detection
+        """
+        self.triggered = False
+        self.times_not_looking_at_screen = 0
+        print("Brain rot detection reset - starting fresh count")
 
 
 class EyeGazeTracker:
@@ -46,7 +116,7 @@ class EyeGazeTracker:
     Eye gaze tracking implementation using MediaPipe Face Landmarker.
     Detects if a user is looking at the screen based on eye and iris positions.
     """
-    def __init__(self, model_path="face_landmarker.task"):
+    def __init__(self, model_path="face_landmarker.task", backend_url="http://localhost:5001", user_id="test_user"):
         """
         Initialize the eye gaze tracker.
         
@@ -97,9 +167,8 @@ class EyeGazeTracker:
         self.use_head_pose_compensation = True
 
         self.prev_frame_time = 0
-        self.new_frame_time = 0
-
-        self.brain_rot = BrainRotWarnings()
+        # Initialize brain rot tracking
+        self.brain_rot = BrainRotWarnings(backend_url=backend_url, user_id=user_id)
 
     def calculate_ear(self, landmarks, vertical_indices, horizontal_indices):
         """
@@ -463,8 +532,24 @@ class EyeGazeTracker:
 def main():
     """
     Main function to run the eye gaze tracker.
+    
+    Command line usage:
+    python brainrot_eyedetection.py --backend_url http://localhost:5001 --user_id user123
     """
     import os
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='Eye Gaze Tracker with Brain Rot Detection')
+    parser.add_argument('--backend_url', type=str, default='http://localhost:5001',
+                        help='URL of the Flask backend')
+    parser.add_argument('--user_id', type=str, default='test_user',
+                        help='User ID for the current session')
+    args = parser.parse_args()
+    
+    print(f"Backend URL: {args.backend_url}")
+    print(f"User ID: {args.user_id}")
+    
     if not os.path.exists('face_landmarker.task'):
         print("Downloading face landmarker model...")
         import urllib.request
@@ -482,7 +567,7 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     
-    tracker = EyeGazeTracker()
+    tracker = EyeGazeTracker(backend_url=args.backend_url, user_id=args.user_id)
     
     print("Eye Gaze Tracker Started")
     print("Press 'c' to calibrate (look at screen center)")
@@ -490,7 +575,13 @@ def main():
     print("Press 'm' to toggle face mesh")
     print("Press 'd' to cycle debug info")
     print("Use arrow keys or WASD to adjust thresholds")
+    print("Press 'r' to reset brain rot trigger")
     print("Press 'q' to quit")
+    
+    # Display brain rot detection info
+    print(f"\nBrain Rot Detection:")
+    print(f"  Trigger threshold: {tracker.brain_rot.trigger_threshold} look-away events")
+    print(f"  Look-away duration: {tracker.brain_rot.look_away_duration} seconds per event")
     
     while cap.isOpened():
         ret, frame = cap.read()
@@ -521,6 +612,9 @@ def main():
             tracker.adjust_thresholds(x_delta=-0.01)
         elif key == 83 or key == ord('d'):
             tracker.adjust_thresholds(x_delta=0.01)
+        elif key == ord('r'):
+            tracker.brain_rot.reset_trigger()
+            print("Brain rot trigger reset")
     
     if not tracker.brain_rot.is_focused and tracker.brain_rot.last_unfocus_time is not None:
         final_unfocused_duration = time.perf_counter() - tracker.brain_rot.last_unfocus_time
