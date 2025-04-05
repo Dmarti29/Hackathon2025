@@ -7,6 +7,9 @@ import re
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse
+import subprocess
+import threading
+import sys
 
 # ============================================================================
 # CONFIGURATION
@@ -718,6 +721,71 @@ def toggle_user_state(user_id):
         return jsonify({
             "error": f"Failed to toggle session: {str(e)}",
             "user_id": user_id
+        }), 500
+
+@app.route('/api/brainrot/start', methods=['POST'])
+def start_eye_detection():
+    """
+    Start the eye detection system for a user
+    
+    Expected JSON payload:
+    {
+        "user_id": "user123"
+    }
+    """
+    try:
+        # Get data from request
+        data = request.json
+        
+        # Validate required fields
+        if not data or 'user_id' not in data:
+            return jsonify({
+                "error": "Missing required field: user_id"
+            }), 400
+        
+        # Extract user_id
+        user_id = data['user_id']
+        
+        # Get the backend URL
+        host = request.host
+        protocol = 'https' if request.is_secure else 'http'
+        backend_url = f"{protocol}://{host}"
+        
+        # Get the path to the eye detection script
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        eye_detection_script = os.path.join(script_dir, 'brainrot_eyedetection.py')
+        
+        # Start the eye detection script as a subprocess
+        def run_eye_detection():
+            try:
+                cmd = [sys.executable, eye_detection_script, '--backend_url', backend_url, '--user_id', user_id]
+                print(f"🔍 Starting eye detection with command: {' '.join(cmd)}")
+                process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = process.communicate()
+                if process.returncode != 0:
+                    print(f"❌ Eye detection process exited with code {process.returncode}")
+                    print(f"Error: {stderr.decode('utf-8')}")
+                else:
+                    print(f"✅ Eye detection process completed successfully")
+            except Exception as e:
+                print(f"❌ Error running eye detection: {e}")
+        
+        # Start the eye detection in a separate thread
+        thread = threading.Thread(target=run_eye_detection)
+        thread.daemon = True  # Make thread exit when main thread exits
+        thread.start()
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Started eye detection for user {user_id}",
+            "backend_url": backend_url,
+            "user_id": user_id
+        })
+        
+    except Exception as e:
+        print(f"❌ Error starting eye detection: {e}")
+        return jsonify({
+            "error": f"Failed to start eye detection: {str(e)}"
         }), 500
 
 @app.route('/api/brainrot/trigger', methods=['POST'])
