@@ -627,3 +627,5 @@ function setupVideoVisibilityObserver() {
     // Start observing the document body for added nodes
     observer.observe(document.body, { childList: true, subtree: true });
 }
+
+
