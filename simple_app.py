@@ -255,6 +255,100 @@ def categorize_url_endpoint():
         "category": category
     })
 
+@app.route('/api/user/<user_id>/history', methods=['GET'])
+def get_user_history(user_id):
+    """
+    Get a list of URLs the user has visited
+    
+    Returns the most recent URLs first
+    """
+    try:
+        # Get user's URL history from Supabase
+        response = supabase.table('url_history').select('*').eq('user_id', user_id).order('timestamp', desc=True).execute()
+        
+        if hasattr(response, 'data'):
+            return jsonify({
+                "user_id": user_id,
+                "history": response.data
+            })
+        else:
+            return jsonify({
+                "user_id": user_id,
+                "history": []
+            })
+    except Exception as e:
+        print(f"❌ Error getting user history: {e}")
+        return jsonify({
+            "error": "Failed to retrieve user history",
+            "user_id": user_id,
+            "history": []
+        }), 500
+
+@app.route('/api/user/<user_id>/stats', methods=['GET'])
+def get_user_stats(user_id):
+    """
+    Get statistics on how many productive vs unproductive sites a user has visited
+    """
+    try:
+        # Get counts from Supabase
+        productive_response = supabase.table('url_history').select('*', count='exact').eq('user_id', user_id).eq('category', 'productive').execute()
+        unproductive_response = supabase.table('url_history').select('*', count='exact').eq('user_id', user_id).eq('category', 'unproductive').execute()
+        unknown_response = supabase.table('url_history').select('*', count='exact').eq('user_id', user_id).eq('category', 'unknown').execute()
+        
+        productive_count = len(productive_response.data) if hasattr(productive_response, 'data') else 0
+        unproductive_count = len(unproductive_response.data) if hasattr(unproductive_response, 'data') else 0
+        unknown_count = len(unknown_response.data) if hasattr(unknown_response, 'data') else 0
+        
+        total_count = productive_count + unproductive_count + unknown_count
+        productivity_score = productive_count / total_count if total_count > 0 else 0
+        
+        return jsonify({
+            "user_id": user_id,
+            "productive_count": productive_count,
+            "unproductive_count": unproductive_count,
+            "unknown_count": unknown_count,
+            "total_count": total_count,
+            "productivity_score": productivity_score
+        })
+    except Exception as e:
+        print(f"❌ Error getting user stats: {e}")
+        return jsonify({
+            "error": "Failed to retrieve user statistics",
+            "user_id": user_id,
+            "productive_count": 0,
+            "unproductive_count": 0,
+            "unknown_count": 0,
+            "total_count": 0,
+            "productivity_score": 0
+        }), 500
+
+@app.route('/api/user/<user_id>/locked-in', methods=['GET'])
+def get_user_locked_in_sessions(user_id):
+    """
+    Get a user's locked-in study sessions
+    """
+    try:
+        # Get user's locked-in sessions from Supabase
+        response = supabase.table('user_state').select('*').eq('user_id', user_id).eq('locked_in', True).order('start_time', desc=True).execute()
+        
+        if hasattr(response, 'data'):
+            return jsonify({
+                "user_id": user_id,
+                "sessions": response.data
+            })
+        else:
+            return jsonify({
+                "user_id": user_id,
+                "sessions": []
+            })
+    except Exception as e:
+        print(f"❌ Error getting user locked-in sessions: {e}")
+        return jsonify({
+            "error": "Failed to retrieve user locked-in sessions",
+            "user_id": user_id,
+            "sessions": []
+        }), 500
+
 # ============================================================================
 # MAIN ENTRY POINT
 # ============================================================================
