@@ -352,7 +352,7 @@ function injectQuickLinks() {
                         Math.floor(Math.random() * youtubeShorts.length)
                     ];
                 const iframe = document.createElement("iframe");
-                iframe.src = `https://www.youtube.com/embed/${randomVideo.id}?autoplay=0&controls=0&modestbranding=1&rel=0&enablejsapi=1&playsinline=1&mute=1`;
+                iframe.src = `https://www.youtube.com/embed/${randomVideo.id}?autoplay=0&controls=1&modestbranding=1&rel=0&enablejsapi=1&playsinline=1&mute=0`;
                 iframe.title = randomVideo.title;
                 iframe.width = "315";
                 iframe.height = "560";
@@ -477,7 +477,7 @@ function injectQuickLinks() {
             const randomVideo =
                 youtubeShorts[Math.floor(Math.random() * youtubeShorts.length)];
             const iframe = document.createElement("iframe");
-            iframe.src = `https://www.youtube.com/embed/${randomVideo.id}?autoplay=0&controls=0&modestbranding=1&rel=0&enablejsapi=1&playsinline=1&mute=1`;
+            iframe.src = `https://www.youtube.com/embed/${randomVideo.id}?autoplay=0&controls=1&modestbranding=1&rel=0&enablejsapi=1&playsinline=1&mute=0`;
             iframe.title = randomVideo.title;
             iframe.width = "315";
             iframe.height = "560";
@@ -577,7 +577,7 @@ function setupVideoVisibilityObserver() {
                     // Video is visible, play it
                     console.log(`Playing video: ${videoId}`);
                     // Use a more reliable way to update the iframe src
-                    const newSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=0&modestbranding=1&rel=0&enablejsapi=1&playsinline=1&mute=1`;
+                    const newSrc = `https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1&modestbranding=1&rel=0&enablejsapi=1&playsinline=1&mute=0`;
                     if (iframe.src !== newSrc) {
                         iframe.src = newSrc;
                     }
@@ -585,7 +585,7 @@ function setupVideoVisibilityObserver() {
                     // Video is not visible, pause it
                     console.log(`Pausing video: ${videoId}`);
                     // Use a more reliable way to update the iframe src
-                    const newSrc = `https://www.youtube.com/embed/${videoId}?autoplay=0&controls=0&modestbranding=1&rel=0&enablejsapi=1&playsinline=1&mute=1`;
+                    const newSrc = `https://www.youtube.com/embed/${videoId}?autoplay=0&controls=1&modestbranding=1&rel=0&enablejsapi=1&playsinline=1&mute=0`;
                     if (iframe.src !== newSrc) {
                         iframe.src = newSrc;
                     }
