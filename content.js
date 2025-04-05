@@ -63,7 +63,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === "showSuggestion") {
         // Update testing mode flag from background script
         inTestingMode = message.inTestingMode || false;
-        showSuggestionBox(message.isProductive);
+        showSuggestionBox(message.isProductive, message.productiveScale);
 
         // FIXED: Send a response to confirm message was received
         sendResponse({ received: true, status: "Showing suggestion" });
@@ -81,9 +81,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true;
 });
 
-function showSuggestionBox(isProductive) {
+function showSuggestionBox(isProductive, productiveScale) {
     // FIXED: Add logging to debug
-    console.log("Showing suggestion box, isProductive:", isProductive);
+    console.log(
+        "Showing suggestion box, isProductive:",
+        isProductive,
+        "productiveScale:",
+        productiveScale
+    );
 
     try {
         // If a suggestion box already exists, remove it
@@ -96,9 +101,52 @@ function showSuggestionBox(isProductive) {
             clearTimeout(dismissTimeout);
         }
 
-        // Create new suggestion box
         suggestionBox = document.createElement("div");
         suggestionBox.className = "productivity-battle-suggestion";
+
+        // Apply size and position based on productivity scale
+        // productiveScale ranges from 0 to 100
+        if (productiveScale !== undefined) {
+            // Determine size class based on productivity
+            let sizeClass = "size-medium";
+            if (productiveScale < 30) {
+                sizeClass = "size-small";
+            } else if (productiveScale > 70) {
+                sizeClass = "size-large";
+            }
+
+            // Special case for very high productivity (80+)
+            if (productiveScale > 80) {
+                
+                suggestionBox.classList.add("very-high-productivity");
+                
+                // Remove any position classes when adding very-high-productivity
+                suggestionBox.classList.remove("position-center");
+                suggestionBox.classList.remove("position-top-right");
+                suggestionBox.classList.remove("position-top-left");
+                suggestionBox.classList.remove("position-bottom-right");
+                suggestionBox.classList.remove("position-bottom-left");
+            }
+
+            // Determine position class based on productivity
+            let positionClass = "position-center";
+            if (productiveScale < 25) {
+                positionClass = "position-top-right";
+            } else if (productiveScale < 50) {
+                positionClass = "position-top-left";
+            } else if (productiveScale < 75) {
+                positionClass = "position-bottom-right";
+            } else {
+                positionClass = "position-bottom-left";
+            }
+
+            // Apply the classes
+            suggestionBox.classList.add(sizeClass);
+            suggestionBox.classList.add(positionClass);
+
+            // Log the applied classes
+            console.log("Applied classes:", sizeClass, positionClass);
+        }
 
         // Choose a random suggestion based on the site type
         const suggestions = isProductive
@@ -119,9 +167,6 @@ function showSuggestionBox(isProductive) {
         const siteIndicator = document.createElement("div");
         siteIndicator.className = "site-type-indicator";
         siteIndicator.textContent = siteType;
-        siteIndicator.style.fontSize = "10px";
-        siteIndicator.style.opacity = "0.7";
-        siteIndicator.style.marginTop = "5px";
         suggestionBox.appendChild(siteIndicator);
 
         // Create dismiss button
@@ -164,7 +209,7 @@ function showSuggestionBox(isProductive) {
                 // Get next suggestion time based on mode
                 const nextTime = getNextSuggestionTime();
                 setTimeout(() => {
-                    showSuggestionBox(isProductive);
+                    showSuggestionBox(isProductive, productiveScale);
                 }, nextTime);
 
                 // Log for testing
@@ -627,5 +672,3 @@ function setupVideoVisibilityObserver() {
     // Start observing the document body for added nodes
     observer.observe(document.body, { childList: true, subtree: true });
 }
-
-
