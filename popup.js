@@ -133,9 +133,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
             );
         });
-});
 
-    
     // Add event listener for the test URL opening button
     const openTestUrlsButton = document.getElementById('openTestUrls');
     if (openTestUrlsButton) {
@@ -171,4 +169,99 @@ document.addEventListener("DOMContentLoaded", function () {
         });
       });
     }
-  
+
+    // Add event listener for the switch mode button
+    const switchModeButton = document.getElementById('switchModeButton');
+    const switchModeStatus = document.getElementById('switchModeStatus');
+    
+    if (switchModeButton) {
+    }
+
+    // Add event listeners for productive/unproductive mode buttons
+    const switchToProductiveBtn = document.getElementById('switchToProductive');
+    const switchToUnproductiveBtn = document.getElementById('switchToUnproductive');
+    
+    if (switchToProductiveBtn) {
+        switchToProductiveBtn.addEventListener('click', function() {
+            // Disable button to prevent multiple clicks
+            this.disabled = true;
+            this.textContent = 'Opening...';
+            
+            console.log('[POPUP] Productive button clicked, sending message to background script');
+            
+            // Send message to background script to open productive tabs
+            chrome.runtime.sendMessage({ 
+                action: 'switchMode',
+                mode: 'productive'
+            }, function(response) {
+                console.log('[POPUP] Received response from background script:', response);
+                
+                // Re-enable button after response is received
+                switchToProductiveBtn.disabled = false;
+                
+                if (response && response.success) {
+                    switchToProductiveBtn.textContent = 'Switched!';
+                    
+                    // Reset button text after 2 seconds
+                    setTimeout(function() {
+                        switchToProductiveBtn.textContent = 'Switch to Productive';
+                    }, 2000);
+                    
+                    // Optionally close the popup after switching
+                    setTimeout(function() {
+                        window.close();
+                    }, 1000);
+                } else {
+                    switchToProductiveBtn.textContent = 'Error';
+                    
+                    // Reset button text after 2 seconds
+                    setTimeout(function() {
+                        switchToProductiveBtn.textContent = 'Switch to Productive';
+                    }, 2000);
+                }
+            });
+        });
+    }
+    
+    if (switchToUnproductiveBtn) {
+        switchToUnproductiveBtn.addEventListener('click', function() {
+            // Disable button to prevent multiple clicks
+            this.disabled = true;
+            this.textContent = 'Opening...';
+            
+            console.log('[POPUP] Unproductive button clicked, sending message to background script');
+            
+            // Send message to background script to open unproductive tabs
+            chrome.runtime.sendMessage({
+                action: 'switchMode',
+                mode: 'unproductive'
+            }, function(response) {
+                console.log('[POPUP] Received response from background script:', response);
+                
+                // Re-enable button after response is received
+                switchToUnproductiveBtn.disabled = false;
+                
+                if (response && response.success) {
+                    switchToUnproductiveBtn.textContent = 'Switched!';
+                    
+                    // Reset button text after 2 seconds
+                    setTimeout(function() {
+                        switchToUnproductiveBtn.textContent = 'Switch to Unproductive';
+                    }, 2000);
+                    
+                    // Optionally close the popup after switching
+                    setTimeout(function() {
+                        window.close();
+                    }, 1000);
+                } else {
+                    switchToUnproductiveBtn.textContent = 'Error';
+                    
+                    // Reset button text after 2 seconds
+                    setTimeout(function() {
+                        switchToUnproductiveBtn.textContent = 'Switch to Unproductive';
+                    }, 2000);
+                }
+            });
+        });
+    }
+});

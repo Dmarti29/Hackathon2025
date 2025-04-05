@@ -262,9 +262,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ durations: tabDurations });
     }
     return true;
-  });
-  
-    // new methods!!
+});
 
 // COCA: This function opens multiple URLs as tabs in the browser. Delete when no longer needed.
 /**
@@ -274,74 +272,74 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
  * @return {Promise<Array>} Promise resolving to an array of created tab objects
  */
 function openMultipleUrls(urls, active = false) {
-  return new Promise((resolve, reject) => {
-    if (!urls || !Array.isArray(urls) || urls.length === 0) {
-      console.error("Invalid URLs provided to openMultipleUrls");
-      reject(new Error("Invalid URLs provided"));
-      return;
-    }
-
-    console.log(`Opening ${urls.length} tabs with URLs:`, urls);
-    
-    // Get the current window to open tabs in
-    chrome.windows.getCurrent((currentWindow) => {
-      if (chrome.runtime.lastError) {
-        console.error("Error getting current window:", chrome.runtime.lastError);
-        reject(chrome.runtime.lastError);
-        return;
-      }
-      
-      const createdTabs = [];
-      let tabsToCreate = urls.length;
-      let tabsCreated = 0;
-      
-      // Create each tab sequentially
-      urls.forEach((url, index) => {
-        try {
-          // Ensure URL has a protocol
-          if (!url.startsWith('http://') && !url.startsWith('https://')) {
-            url = 'https://' + url;
-          }
-          
-          // Create a new tab with the URL
-          chrome.tabs.create({
-            url: url,
-            active: active && index === 0, // Only make the first tab active if requested
-            windowId: currentWindow.id
-          }, (tab) => {
-            if (chrome.runtime.lastError) {
-              console.error(`Error creating tab for ${url}:`, chrome.runtime.lastError);
-              tabsToCreate--;
-              
-              // If we've processed all tabs (even with errors), resolve
-              if (tabsCreated === tabsToCreate) {
-                resolve(createdTabs);
-              }
-              
-              return;
-            }
-            
-            console.log(`Created tab with URL: ${url}, tab ID: ${tab.id}`);
-            createdTabs.push(tab);
-            tabsCreated++;
-            
-            // If we've created all tabs, resolve the promise
-            if (tabsCreated === tabsToCreate) {
-              resolve(createdTabs);
-            }
-          });
-        } catch (err) {
-          console.error(`Error creating tab for ${url}:`, err);
-          tabsToCreate--;
-          
-          // If we've processed all tabs (even with errors), resolve
-          if (tabsCreated === tabsToCreate) {
-            resolve(createdTabs);
-          }
+    return new Promise((resolve, reject) => {
+        if (!urls || !Array.isArray(urls) || urls.length === 0) {
+            console.error("Invalid URLs provided to openMultipleUrls");
+            reject(new Error("Invalid URLs provided"));
+            return;
         }
-      });
+
+        console.log(`Opening ${urls.length} tabs with URLs:`, urls);
+
+        // Get the current window to open tabs in
+        chrome.windows.getCurrent((currentWindow) => {
+            if (chrome.runtime.lastError) {
+                console.error("Error getting current window:", chrome.runtime.lastError);
+                reject(chrome.runtime.lastError);
+                return;
+            }
+
+            const createdTabs = [];
+            let tabsToCreate = urls.length;
+            let tabsCreated = 0;
+
+            // Create each tab sequentially
+            urls.forEach((url, index) => {
+                try {
+                    // Ensure URL has a protocol
+                    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                        url = 'https://' + url;
+                    }
+
+                    // Create a new tab with the URL
+                    chrome.tabs.create({
+                        url: url,
+                        active: active && index === 0, // Only make the first tab active if requested
+                        windowId: currentWindow.id
+                    }, (tab) => {
+                        if (chrome.runtime.lastError) {
+                            console.error(`Error creating tab for ${url}:`, chrome.runtime.lastError);
+                            tabsToCreate--;
+
+                            // If we've processed all tabs (even with errors), resolve
+                            if (tabsCreated === tabsToCreate) {
+                                resolve(createdTabs);
+                            }
+
+                            return;
+                        }
+
+                        console.log(`Created tab with URL: ${url}, tab ID: ${tab.id}`);
+                        createdTabs.push(tab);
+                        tabsCreated++;
+
+                        // If we've created all tabs, resolve the promise
+                        if (tabsCreated === tabsToCreate) {
+                            resolve(createdTabs);
+                        }
+                    });
+                } catch (err) {
+                    console.error(`Error creating tab for ${url}:`, err);
+                    tabsToCreate--;
+
+                    // If we've processed all tabs (even with errors), resolve
+                    if (tabsCreated === tabsToCreate) {
+                        resolve(createdTabs);
+                    }
+                }
+            });
+        });
     });
-  });
 }
 
 // COCA: Test function to open 5 predefined URLs. Delete when no longer needed.
@@ -350,42 +348,123 @@ function openMultipleUrls(urls, active = false) {
  * In the future, this will fetch URLs from a backend
  */
 function openTestUrls() {
-  const testUrls = [
-    'google.com',
-    'github.com',
-    'stackoverflow.com',
-    'mozilla.org',
-    'developer.chrome.com'
-  ];
-  
-  return openMultipleUrls(testUrls, true);
+    const testUrls = [
+        'google.com',
+        'github.com',
+        'stackoverflow.com',
+        'mozilla.org',
+        'developer.chrome.com'
+    ];
+
+    return openMultipleUrls(testUrls, true);
 }
 
 // COCA: Message handler for URL opening functionality. Modify as needed when removing COCA-marked functions.
 // Listen for messages from popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'openUrls') {
-    // If URLs are provided in the message, use those
-    if (message.urls && Array.isArray(message.urls)) {
-      openMultipleUrls(message.urls, message.makeFirstTabActive)
-        .then(tabs => {
-          sendResponse({ success: true, tabs: tabs });
-        })
-        .catch(error => {
-          sendResponse({ success: false, error: error.message });
-        });
-      return true; // Keep message channel open for async response
-    } 
-    // Otherwise use test URLs
-    else {
-      openTestUrls()
-        .then(tabs => {
-          sendResponse({ success: true, tabs: tabs });
-        })
-        .catch(error => {
-          sendResponse({ success: false, error: error.message });
-        });
-      return true; // Keep message channel open for async response
+    if (message.action === 'openUrls') {
+        // If URLs are provided in the message, use those
+        if (message.urls && Array.isArray(message.urls)) {
+            openMultipleUrls(message.urls, message.makeFirstTabActive)
+                .then(tabs => {
+                    sendResponse({ success: true, tabs: tabs });
+                })
+                .catch(error => {
+                    sendResponse({ success: false, error: error.message });
+                });
+            return true; // Keep message channel open for async response
+        }
+        // Otherwise use test URLs
+        else {
+            openTestUrls()
+                .then(tabs => {
+                    sendResponse({ success: true, tabs: tabs });
+                })
+                .catch(error => {
+                    sendResponse({ success: false, error: error.message });
+                });
+            return true; // Keep message channel open for async response
+        }
     }
-  }
+
+    // Handle switching between productive and unproductive windows
+    if (message.action === 'switchMode') {
+        const mode = message.mode || 'productive'; // Default to productive if not specified
+        
+        console.log(`[BACKGROUND] Received switchMode message with mode: ${mode}`);
+
+        let urlsToOpen = [];
+        if (mode === 'productive') {
+            // Use a few productive URLs
+            urlsToOpen = productiveSites.slice(0, 3);
+        } else {
+            // Use a few unproductive URLs
+            urlsToOpen = unproductiveSites.slice(0, 3);
+        }
+
+        console.log(`[BACKGROUND] Opening ${mode} mode with URLs:`, urlsToOpen);
+
+        // Use the first URL for the initial window, then add the rest as tabs
+        const firstUrl = urlsToOpen[0];
+        const remainingUrls = urlsToOpen.slice(1);
+        
+        console.log(`[BACKGROUND] Creating new window with first URL: ${firstUrl}`);
+        console.log(`[BACKGROUND] Will add these URLs as tabs:`, remainingUrls);
+
+        // Create a new window with the first URL
+        chrome.windows.create({
+            url: firstUrl.startsWith('http') ? firstUrl : `https://${firstUrl}`,
+            focused: true,
+            state: 'normal',
+            width: 1200,
+            height: 800
+        }, newWindow => {
+            if (chrome.runtime.lastError) {
+                console.error("[BACKGROUND] Error creating window:", chrome.runtime.lastError);
+                sendResponse({ success: false, error: chrome.runtime.lastError.message });
+                return;
+            }
+
+            console.log(`[BACKGROUND] Created ${mode} window with ID: ${newWindow.id}`);
+            console.log(`[BACKGROUND] Window details:`, newWindow);
+
+            // Open the remaining URLs as tabs in the new window
+            const createdTabs = [newWindow.tabs[0]];
+
+            // Create additional tabs in the new window for remaining URLs
+            if (remainingUrls.length > 0) {
+                console.log(`[BACKGROUND] Adding ${remainingUrls.length} additional tabs to window ${newWindow.id}`);
+                
+                remainingUrls.forEach((url, index) => {
+                    console.log(`[BACKGROUND] Creating tab ${index+1} with URL: ${url}`);
+                    
+                    chrome.tabs.create({
+                        windowId: newWindow.id,
+                        url: url.startsWith('http') ? url : `https://${url}`,
+                        active: false
+                    }, tab => {
+                        if (chrome.runtime.lastError) {
+                            console.error(`[BACKGROUND] Error creating tab for ${url}:`, chrome.runtime.lastError);
+                        } else {
+                            createdTabs.push(tab);
+                            console.log(`[BACKGROUND] Successfully created tab with URL: ${url}, tab ID: ${tab.id}`);
+                        }
+                    });
+                });
+            }
+
+            // Send response with the new window and tabs
+            console.log(`[BACKGROUND] Sending success response back to popup`);
+            sendResponse({
+                success: true,
+                mode: mode,
+                windowId: newWindow.id,
+                tabs: createdTabs,
+                message: `Switched to ${mode} mode in new window`
+            });
+
+        });
+
+        return true; // Keep message channel open for async response
+    }
 });
